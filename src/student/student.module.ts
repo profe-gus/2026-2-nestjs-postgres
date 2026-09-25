@@ -9,6 +9,7 @@ import { Grades } from './entities/grades.entity';
   controllers: [StudentController],
   imports:[
     TypeOrmModule.forFeature([Student, Grades])
+    
   ],
   providers: [StudentService],
 })
