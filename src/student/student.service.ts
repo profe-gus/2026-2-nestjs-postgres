@@ -112,6 +112,16 @@ export class StudentService {
         await this.studentRepository.remove(student);
     }
 
+    deleteAllStudents(){
+    const query = this.studentRepository.createQueryBuilder();
+    try{
+      return query.delete()
+                        .execute();
+    }catch(error){
+      this.handleException(error);
+    }
+  }
+
     private handleException(error:any){
         this.logger.error(error);
         if(error.code === '23505'){

@@ -12,5 +12,6 @@ import { Grades } from './entities/grades.entity';
     
   ],
   providers: [StudentService],
+  exports: [StudentService],
 })
 export class StudentModule {}

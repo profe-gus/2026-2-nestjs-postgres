@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { StudentModule } from './student/student.module';
 import { UserModule } from './user/user.module';
+import { SeedModule } from './seed/seed.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { UserModule } from './user/user.module';
     }),
     StudentModule,
     UserModule,
+    SeedModule,
 
   ],
   controllers: [],

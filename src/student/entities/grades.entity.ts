@@ -4,7 +4,7 @@ import { Student } from "./student.entity";
 @Entity()
 export class Grades {
     @PrimaryGeneratedColumn("uuid")
-    id:string;
+    id?:string;
 
     @Column("text")
     subject:string;
