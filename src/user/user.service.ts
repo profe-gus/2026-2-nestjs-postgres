@@ -5,6 +5,8 @@ import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import bcrypt from "bcrypt";
 import { Login } from './dto/login.dto';
+import { JwtPayload } from './interfaces/jwt.interface';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class UserService {
@@ -12,7 +14,8 @@ export class UserService {
   
   constructor(
     @InjectRepository(User)
-    private readonly userRepository : Repository<User>
+    private readonly userRepository : Repository<User>,
+    private jwtService: JwtService
   ){}
 
   async create(registerDto: Register) {
@@ -24,7 +27,14 @@ export class UserService {
       })
       await this.userRepository.save(user);
       delete user.password;
-      return user;
+      
+      return {
+      ...user,
+      token: this.getJwtToken({
+        id: user.id,
+        email: user.email
+      })
+    };
     }catch(error){
       this.handleException(error);
     }
@@ -32,6 +42,11 @@ export class UserService {
 
   encryptPassword(password:string){
     return bcrypt.hashSync(password, 10);
+  }
+
+  private getJwtToken(jwtPayload: JwtPayload){
+    const token = this.jwtService.sign(jwtPayload);
+    return token;
   }
 
   async login(loginDto: Login){
@@ -47,7 +62,13 @@ export class UserService {
       throw new UnauthorizedException(`Email or password incorrect`);
 
     delete user.password;
-    return user;
+    return {
+      ...user,
+      token: this.getJwtToken({
+        id: user.id,
+        email: user.email
+      })
+    };
   }
 
   private handleException(error:any){
