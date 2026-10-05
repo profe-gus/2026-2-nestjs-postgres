@@ -2,7 +2,11 @@
 
 Proyecto base para las prácticas del curso **Computación en Internet 3**. Es una API REST construida con [NestJS](https://nestjs.com/) que se conecta a una base de datos **PostgreSQL** usando **TypeORM**.
 
-Este repositorio sirve como punto de partida: trae la configuración inicial (conexión a la base de datos, validaciones globales, prefijo de rutas) y el módulo `student`, que ya tiene sus entidades (`Student` y `Grades`, relacionadas 1:N), DTOs de creación, actualización y paginación, y el CRUD completo: crear, listar, buscar, actualizar (con transacción) y eliminar.
+Este repositorio sirve como punto de partida: trae la configuración inicial (conexión a la base de datos, validaciones globales, prefijo de rutas) y tres módulos:
+
+- **`student`**: entidades `Student` y `Grades` (relacionadas 1:N), DTOs de creación, actualización y paginación, y el CRUD completo: crear, listar, buscar, actualizar (con transacción) y eliminar.
+- **`user`**: registro e inicio de sesión de usuarios con contraseñas encriptadas (`bcrypt`) y autenticación con **JWT** (`passport-jwt`), más un *guard* de roles y decoradores propios (`@Auth()`, `@GetUser()`, `@RoleProtected()`) para proteger rutas.
+- **`seed`**: un endpoint que borra los estudiantes y vuelve a cargar datos de prueba.
 
 ## Stack y dependencias
 
@@ -17,6 +21,12 @@ Este repositorio sirve como punto de partida: trae la configuración inicial (co
 | `@nestjs/typeorm` | ^12.0.1 | Integra TypeORM como ORM dentro de Nest (`TypeOrmModule`) |
 | `typeorm` | ^1.1.1 | ORM: mapea clases TypeScript (entidades) a tablas de la base de datos |
 | `pg` | ^8.23.0 | Driver de PostgreSQL que usa TypeORM para conectarse |
+| `@nestjs/passport` | ^12.0.0 | Integra Passport en Nest: `PassportModule`, `PassportStrategy` y el guard `AuthGuard()` |
+| `passport` | ^0.7.0 | Librería de autenticación sobre la que corre `@nestjs/passport` |
+| `passport-jwt` | ^4.0.1 | Estrategia de Passport que lee y valida el JWT que llega en el header `Authorization: Bearer <token>` |
+| `@nestjs/jwt` | ^12.0.2 | `JwtModule`/`JwtService`: firma (genera) los tokens JWT |
+| `bcrypt` | ^6.0.0 | Encripta (hash) las contraseñas antes de guardarlas y las compara en el login |
+| `@types/bcrypt`, `@types/passport-jwt` | ^6.0.0 / ^4.0.1 | Tipos de TypeScript para `bcrypt` y `passport-jwt` (están en `dependencies`, aunque bien podrían ir en `devDependencies`) |
 | `class-validator` | ^0.15.1 | Valida los DTOs (`@IsString()`, `@IsInt()`, etc.) |
 | `class-transformer` | ^0.5.1 | Transforma objetos planos (JSON de las peticiones) en instancias de clases (DTOs) |
 | `@nestjs/mapped-types` | * | Utilidades para derivar DTOs (`PartialType`, `PickType`) sin repetir código, típico en `update-*.dto.ts` |
@@ -45,17 +55,47 @@ Este repositorio sirve como punto de partida: trae la configuración inicial (co
 src/
 ├── main.ts                     # Punto de entrada: arranca la app, prefijo global, validaciones
 ├── app.module.ts                # Módulo raíz: config, conexión a la BD, módulos de features
-└── student/
-    ├── student.module.ts        # Módulo de la feature "student" (registra Student y Grades con TypeOrmModule.forFeature)
-    ├── student.controller.ts    # Rutas HTTP de "student": crear, listar, buscar, actualizar, eliminar
-    ├── student.service.ts       # Lógica de negocio de "student"
-    ├── dto/
-    │   ├── create-student.dto.ts  # Reglas de validación para crear un student (incluye sus grades)
-    │   ├── update-student.dto.ts  # DTO de actualización: PartialType(CreateStudent), todos los campos opcionales
-    │   └── pagination.dto.ts      # Query params `limit`/`skip` para paginar el listado
-    └── entities/
-        ├── student.entity.ts      # Entidad TypeORM: tabla "student"
-        └── grades.entity.ts       # Entidad TypeORM: tabla "grades" (relación N:1 con student)
+├── student/
+│   ├── student.module.ts        # Módulo de la feature "student" (registra Student y Grades con TypeOrmModule.forFeature)
+│   ├── student.controller.ts    # Rutas HTTP de "student": crear, listar, buscar, actualizar, eliminar
+│   ├── student.service.ts       # Lógica de negocio de "student"
+│   ├── dto/
+│   │   ├── create-student.dto.ts  # Reglas de validación para crear un student (incluye sus grades)
+│   │   ├── update-student.dto.ts  # DTO de actualización: PartialType(CreateStudent), todos los campos opcionales
+│   │   └── pagination.dto.ts      # Query params `limit`/`skip` para paginar el listado
+│   └── entities/
+│       ├── student.entity.ts      # Entidad TypeORM: tabla "student"
+│       └── grades.entity.ts       # Entidad TypeORM: tabla "grades" (relación N:1 con student)
+├── user/
+│   ├── user.module.ts           # Registra User, PassportModule y JwtModule (secreto desde JWT_SECRET, expira en 1h)
+│   ├── user.controller.ts       # Rutas: signup, auth (login) y una ruta privada de prueba
+│   ├── user.service.ts          # Registro (hash con bcrypt), login y generación del JWT
+│   ├── dto/
+│   │   ├── register.dto.ts        # email, password (8–16 caracteres) y fullName
+│   │   └── login.dto.ts           # email y password
+│   ├── entities/
+│   │   └── user.entity.ts         # Entidad TypeORM: tabla "user" (email único, isActive, roles)
+│   ├── enums/
+│   │   └── valid-roles.enum.ts    # Roles válidos: admin, teacher, super-user
+│   ├── interfaces/
+│   │   └── jwt.interface.ts       # Forma del payload del JWT: { id, email }
+│   ├── strategies/
+│   │   └── jwt.strategy.ts        # Valida el token y deja el usuario en request.user
+│   ├── guards/
+│   │   └── user-role/
+│   │       └── user-role.guard.ts # Guard que verifica que el usuario tenga alguno de los roles requeridos
+│   └── decorators/
+│       ├── auth.decorator.ts      # @Auth(...roles): agrupa RoleProtected + los guards de autenticación y roles
+│       ├── get-user.decorator.ts  # @GetUser(): extrae el usuario autenticado de la request
+│       ├── test.decorator.ts      # @Test(): decorador de parámetro de ejemplo (solo imprime la request)
+│       └── role-protected/
+│           └── role-protected.decorator.ts  # @RoleProtected(...roles): guarda los roles como metadata
+└── seed/
+    ├── seed.module.ts           # Importa StudentModule para reutilizar StudentService
+    ├── seed.controller.ts       # GET /api/seed
+    ├── seed.service.ts          # Borra todos los estudiantes e inserta los datos de prueba
+    └── data/
+        └── seed-student.data.ts   # 40 estudiantes de ejemplo con sus notas
 test/
 └── app.e2e-spec.ts              # Prueba end-to-end de ejemplo
 ```
@@ -84,7 +124,10 @@ Cada nueva funcionalidad del curso debería seguir este mismo patrón: una carpe
    DB_NAME=compunet3
    DB_USERNAME=postgres
    DB_PASSWORD=tu_password
+   JWT_SECRET=una_cadena_larga_y_secreta
    ```
+
+   `JWT_SECRET` es la clave con la que se firman y verifican los tokens JWT. Sin ella la app no puede generar ni validar tokens.
 
    > El `.env` está en `.gitignore`: cada quien usa el suyo y **no se sube al repositorio**.
 
@@ -94,7 +137,9 @@ Cada nueva funcionalidad del curso debería seguir este mismo patrón: una carpe
    npm run start:dev
    ```
 
-4. La API queda disponible en `http://localhost:9000/api/student` (ver [Puntos clave](#puntos-clave) sobre el prefijo global y [Endpoints disponibles](#endpoints-disponibles)).
+4. (Opcional) Cargar datos de prueba llamando a `GET http://localhost:9000/api/seed`.
+
+5. La API queda disponible en `http://localhost:9000/api` (ver [Puntos clave](#puntos-clave) sobre el prefijo global y [Endpoints disponibles](#endpoints-disponibles)).
 
 ## Scripts disponibles
 
@@ -138,7 +183,9 @@ El [Nest CLI](https://docs.nestjs.com/cli/overview) (`nest`, instalado como depe
 
 ## Endpoints disponibles
 
-Con el prefijo global `api` (definido en `main.ts`) y el prefijo `student` del controlador, las rutas quedan bajo `/api/student`.
+Todas las rutas quedan bajo el prefijo global `/api` (definido en `main.ts`), más el prefijo de cada controlador (`student`, `user`, `seed`).
+
+### Student
 
 | Método | Ruta | Descripción | Body / Query params |
 |---|---|---|---|
@@ -190,6 +237,40 @@ curl -X PATCH http://localhost:9000/api/student/<uuid> \
 curl -X DELETE http://localhost:9000/api/student/<uuid>
 ```
 
+### User (autenticación)
+
+| Método | Ruta | Descripción | Body / Headers |
+|---|---|---|---|
+| `POST` | `/api/user/signup` | Registra un usuario. Devuelve el usuario (sin la contraseña) y un `token` | `{ email, password, fullName }` |
+| `POST` | `/api/user/auth` | Inicia sesión. Devuelve `id`, `email` y un `token` nuevo | `{ email, password }` |
+| `POST` | `/api/user/private` | Ruta protegida de prueba: solo responde si llega un token válido | Header `Authorization: Bearer <token>` |
+
+```bash
+# Registrarse
+curl -X POST http://localhost:9000/api/user/signup \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "profe@example.com", "password": "Secreta123", "fullName": "Profe Ejemplo" }'
+
+# Iniciar sesión (copiar el "token" de la respuesta)
+curl -X POST http://localhost:9000/api/user/auth \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "profe@example.com", "password": "Secreta123" }'
+
+# Llamar a la ruta protegida con el token
+curl -X POST http://localhost:9000/api/user/private \
+  -H "Authorization: Bearer <token>"
+```
+
+Sin token (o con uno vencido o inválido) la ruta privada responde `401 Unauthorized`. El token dura **1 hora**.
+
+### Seed
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/seed` | **Borra todos los estudiantes** y vuelve a insertar los 40 de `src/seed/data/seed-student.data.ts`. Responde `SEED EXECUTED` |
+
+> Ojo: el seed no está protegido y deja la tabla `student` solo con los datos de prueba. Úsenlo únicamente en su base de datos local.
+
 También hay una **colección de Postman lista para importar** en [`postman/compunet3-nestjs-postgres.postman_collection.json`](postman/compunet3-nestjs-postgres.postman_collection.json) con las peticiones de crear, listar y buscar (ver [Colección de Postman](#colección-de-postman)).
 
 ## Colección de Postman
@@ -203,7 +284,52 @@ Para usarla:
 3. Para "Buscar estudiante", completar la variable de colección `studentTerm` (o editar el valor directamente en la pestaña **Params** del request) con el `id`, `name` o `nickname` de un estudiante que ya hayan creado.
 4. Con la app corriendo (`npm run start:dev`) y la base de datos disponible, ejecutar las peticiones en orden: primero crear, después listar/buscar.
 
-La colección todavía no incluye los requests de actualizar (`PATCH`) y eliminar (`DELETE`): agréguenlos a la misma carpeta "Student" para mantenerla al día.
+La colección todavía no incluye los requests de actualizar (`PATCH`) y eliminar (`DELETE`) de estudiantes, ni los de `user` y `seed`: agréguenlos para mantenerla al día. Para las rutas protegidas, en la pestaña **Authorization** del request elijan **Bearer Token** y peguen el token del login.
+
+## Guards y decoradores
+
+Antes de ver cómo se protege la API, conviene tener claros estos dos conceptos.
+
+### ¿Qué es un decorador?
+
+Un **decorador** es una función que se escribe con `@` encima de una clase, un método, una propiedad o un parámetro, y le agrega comportamiento o información (*metadata*) sin cambiar su código. Nest está construido sobre decoradores: `@Controller()`, `@Get()`, `@Body()`, `@Injectable()`, `@Entity()` y `@Column()` son todos decoradores.
+
+**Para qué sirven:** declarar *qué* es o *qué* necesita algo (esta clase es un controlador, este método responde a `GET`, este parámetro sale del `body`) y dejar que el framework se encargue del *cómo*. También se pueden crear decoradores propios para no repetir código. En este proyecto hay tres tipos:
+
+- **De parámetro** (`createParamDecorator`): `@GetUser()` saca el usuario autenticado de `request.user` y lo entrega directamente como argumento del método. Con `@GetUser('email')` devuelve solo ese campo.
+- **De metadata** (`SetMetadata`): `@RoleProtected('admin')` no ejecuta nada en la petición; solo "pega" la lista de roles al método para que un guard la lea después.
+- **Compuestos** (`applyDecorators`): `@Auth(...roles)` junta varios decoradores en uno solo. Escribir `@Auth(ValidRoles.admin)` equivale a escribir `@RoleProtected(ValidRoles.admin)` y `@UseGuards(AuthGuard(), UserRoleGuard)`.
+
+### ¿Qué es un guard?
+
+Un **guard** es una clase con `@Injectable()` que implementa `CanActivate`. Nest la ejecuta **antes** de llegar al método del controlador, y su método `canActivate()` decide si la petición sigue (`true`) o se corta (`false` o lanzando una excepción como `UnauthorizedException` o `ForbiddenException`). Se aplican con `@UseGuards()` a un método, a un controlador entero o de forma global.
+
+**Para qué sirven:** autenticación y autorización, es decir, responder "¿quién eres?" y "¿tienes permiso para esto?" en un solo lugar, en vez de repetir esas validaciones dentro de cada controlador o servicio.
+
+En este proyecto hay dos:
+
+- **`AuthGuard()`** (de `@nestjs/passport`): usa la estrategia `JwtStrategy` para leer el token del header `Authorization: Bearer <token>`, verificar su firma con `JWT_SECRET` y buscar el usuario en la base de datos. Si todo está bien, deja el usuario en `request.user`; si no, responde `401`.
+- **`UserRoleGuard`** (`src/user/guards/user-role/user-role.guard.ts`): usa `Reflector` para leer los roles que dejó `@RoleProtected()` en el método. Si no hay roles requeridos, deja pasar a cualquier usuario autenticado; si los hay, verifica que `request.user.roles` tenga al menos uno, y si no responde `403 Forbidden`.
+
+### Cómo trabajan juntos
+
+```
+Petición → AuthGuard() ──(token válido, request.user = usuario)──→ UserRoleGuard ──(rol permitido)──→ método del controlador
+              │                                                     │
+              └─ 401 si no hay token o es inválido                   └─ 403 si el usuario no tiene el rol
+```
+
+Ejemplo de uso en un controlador:
+
+```ts
+@Get('reportes')
+@Auth(ValidRoles.admin, ValidRoles.teacher) // solo usuarios con rol admin o teacher
+verReportes(@GetUser() user: User) {        // user llega listo, ya validado
+  return `Hola ${user.fullName}`;
+}
+```
+
+`@Auth()` sin argumentos (como en `POST /api/user/private`) solo exige estar autenticado, sin importar el rol.
 
 ## Puntos clave
 
@@ -213,7 +339,7 @@ Estos son los conceptos importantes que se están usando en este proyecto y que 
 
 - **Inyección de dependencias**: las clases marcadas con `@Injectable()` (como `StudentService`) se inyectan por constructor donde se necesiten (por ejemplo, en `StudentController`). Nest se encarga de crear e inyectar esas instancias, no hay que hacerlo a mano.
 
-- **Conexión a PostgreSQL con TypeORM** (`src/app.module.ts`): `TypeOrmModule.forRoot()` configura la conexión leyendo las variables de entorno cargadas por `ConfigModule`. `autoLoadEntities: true` hace que TypeORM detecte automáticamente las entidades registradas en cada módulo, sin tener que listarlas todas a mano.
+- **Conexión a PostgreSQL con TypeORM** (`src/app.module.ts`): `TypeOrmModule.forRoot()` configura la conexión leyendo las variables de entorno cargadas por `ConfigModule`. El puerto se lee con `port: +process.env.DB_PORT!`: las variables de entorno siempre llegan como string, así que el `+` las convierte a número, y el `!` al final (*non-null assertion* de TypeScript) le indica al compilador que la variable sí viene definida. Ojo con el orden: `+!process.env.DB_PORT` (con el `!` adelante) sería el operador de negación de JavaScript, que convierte `"5432"` en `false` y luego en `0`. `autoLoadEntities: true` hace que TypeORM detecte automáticamente las entidades registradas en cada módulo, sin tener que listarlas todas a mano.
 
 - **`synchronize: true`**: hace que TypeORM cree/actualice las tablas automáticamente a partir de las entidades, sin necesidad de escribir migraciones. Es muy cómodo para aprender y prototipar, **pero nunca debe usarse en producción** (puede borrar o alterar datos reales). El propio código lo marca con un comentario recordándolo.
 
@@ -247,9 +373,17 @@ Estos son los conceptos importantes que se están usando en este proyecto y que 
 
 - **Eliminación** (`DELETE /api/student/:id` → `StudentService.removeStudent`): busca el estudiante con `findOne` y lo borra con `studentRepository.remove(student)`. Sus notas se eliminan en la base de datos gracias al `onDelete: "CASCADE"` de la relación.
 
-## ⚠️ Cosas a revisar (para practicar debugging)
+- **Usuarios y contraseñas** (`UserService.create`): la contraseña nunca se guarda en texto plano: `bcrypt.hashSync(password, 10)` la convierte en un hash antes de guardarla. En el login, `bcrypt.compareSync()` compara la contraseña recibida contra ese hash. Después de guardar se hace `delete user.password` para que la contraseña no viaje en la respuesta. Si el email o la contraseña no coinciden, se responde el mismo mensaje genérico (`Email or password incorrect`) para no revelar cuál de los dos falló.
 
-- En `src/app.module.ts`, la línea `port: +!process.env.DB_PORT` no calcula el puerto correctamente: el operador `!` niega el valor *antes* de convertirlo a número, por lo que el puerto configurado en `DB_PORT` nunca se usa como tal. Es un buen ejercicio identificar por qué y corregirlo (pista: comparar con cómo se leen las demás variables de entorno en el mismo bloque).
+- **Entidad `User`** (`src/user/entities/user.entity.ts`): `email` es único, `isActive` vale `true` por defecto y `roles` es un arreglo de texto que por defecto es `["teacher"]`. Un hook `@BeforeInsert`/`@BeforeUpdate` pasa el email a minúsculas y le quita espacios, para que `Ana@Mail.com` y `ana@mail.com` no cuenten como usuarios distintos.
+
+- **JWT** (`UserModule` + `UserService.getJwtToken`): `JwtModule.registerAsync()` usa una `useFactory` con `ConfigService` para leer `JWT_SECRET` del `.env` cuando el módulo arranca. El token se firma con el payload `{ id, email }` (`JwtPayload`) y expira en 1 hora. Tanto el registro como el login devuelven un token.
+
+- **`JwtStrategy`** (`src/user/strategies/jwt.strategy.ts`): extiende `PassportStrategy(Strategy)` de `passport-jwt`. En el constructor se le dice de dónde sacar el token (`ExtractJwt.fromAuthHeaderAsBearerToken()`) y con qué clave verificarlo. Su método `validate(payload)` se ejecuta solo si la firma es válida: busca el usuario por `id`, rechaza los inexistentes o inactivos y devuelve el usuario, que Passport deja en `request.user`. Ver [Guards y decoradores](#guards-y-decoradores) para cómo se usa.
+
+- **Seed** (`SeedModule`): reutiliza `StudentService` (por eso `StudentModule` lo exporta en `exports`) para borrar todos los estudiantes con `deleteAllStudents()` y crear los de prueba en paralelo con `Promise.all`.
+
+## ⚠️ Cosas a revisar (para practicar debugging)
 
 - En `src/student/student.service.ts`, `handleException` **solo relanza el error si `error.code === '23505'`** (violación de `unique` en Postgres). Para cualquier otro error, el método registra el log y no hace `throw`: la función que llamó (`createStudent`, `findAll`, `findOne`) termina devolviendo `undefined` en silencio, en vez de propagar el fallo. Esto es especialmente delicado en `findOne`: el `throw new NotFoundException(...)` que se lanza explícitamente cuando no se encuentra el estudiante también es capturado por el mismo `catch`, pasa por `handleException` y, como no tiene `code === '23505'`, **se pierde** — el endpoint termina respondiendo distinto a un 404 real. Piensen cómo debería relanzar (`throw`) el error por defecto, y solo dar un manejo especial a los códigos de Postgres que les interese distinguir.
 
@@ -257,9 +391,15 @@ Estos son los conceptos importantes que se están usando en este proyecto y que 
 
 - En `src/student/entities/student.entity.ts`, `checkNicknameInsert`/`checkNicknameUpdate` arman el `nickname` con `this.nickname.toLowerCase().replace(" ", "_")`. `String.replace` con un string (no una expresión regular con `/g`) solo reemplaza la **primera** coincidencia, así que un nombre con varios espacios ("Ana María Pérez") no queda completamente convertido a `snake_case`. ¿Cómo lo arreglarían para que reemplace todos los espacios?
 
-- En `src/student/student.controller.ts`, el método `update` recibe `@Param("id") email: string`: el parámetro se llama `email` pero en realidad trae el `id` (UUID) del estudiante. Funciona, pero confunde al leerlo: ¿qué nombre debería tener?
-
 - `PATCH` con `grades` reemplaza todas las notas (ver [Puntos clave](#puntos-clave)). ¿Cómo cambiarían `update` para que una materia nueva se **agregue** y una que ya existe solo actualice su nota? Pista: si solo quitan el `delete`, TypeORM deja las notas que no están en el arreglo sin estudiante (`studentId` en `NULL`), así que hay que combinar las notas actuales con las nuevas.
+
+- En `src/user/guards/user-role/user-role.guard.ts` hay un `import request from 'supertest'` que no se usa (dentro del método se declara otra variable `request` que lo tapa). `supertest` es una dependencia de **desarrollo**: si se instala la app solo con las dependencias de producción, ese import hace que la app no arranque. ¿Qué otros imports sin usar encuentran en `user.controller.ts` y el guard?
+
+- `UserRoleGuard` lee los roles con `this.reflector.get(META_ROLES, context.getHandler())`, es decir, solo desde el **método**. Si alguien pone `@RoleProtected()` sobre el **controlador** completo, el guard no lo ve. ¿Qué método de `Reflector` (pista: `getAllAndOverride`) permitiría leerlo de ambos lugares?
+
+- `UserService.handleException` tiene el mismo problema que el de `StudentService`: solo relanza el error `23505` (por ejemplo, registrarse con un email que ya existe), y además lo devuelve como `500`. Cualquier otro error deja a `create` devolviendo `undefined`.
+
+- `GET /api/seed` borra datos y cualquiera puede llamarlo. ¿Cómo lo protegerían usando `@Auth(...)` para que solo un `admin` pueda ejecutarlo?
 
 ## Pruebas
 
@@ -279,3 +419,6 @@ npm run test:cov
 - [Documentación de NestJS](https://docs.nestjs.com)
 - [Documentación de TypeORM](https://typeorm.io)
 - [class-validator](https://github.com/typestack/class-validator)
+- [Guards en NestJS](https://docs.nestjs.com/guards)
+- [Decoradores personalizados en NestJS](https://docs.nestjs.com/custom-decorators)
+- [Autenticación con Passport en NestJS](https://docs.nestjs.com/recipes/passport)
