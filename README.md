@@ -2,9 +2,9 @@
 
 Proyecto base para las prácticas del curso **Computación en Internet 3**. Es una API REST construida con [NestJS](https://nestjs.com/) que se conecta a una base de datos **PostgreSQL** usando **TypeORM**.
 
-Este repositorio sirve como punto de partida: trae la configuración inicial (conexión a la base de datos, validaciones globales, prefijo de rutas) y tres módulos:
+Este repositorio sirve como punto de partida: trae la configuración inicial (conexión a la base de datos, validaciones globales, prefijo de rutas, CORS y documentación interactiva con **Swagger**) y tres módulos:
 
-- **`student`**: entidades `Student` y `Grades` (relacionadas 1:N), DTOs de creación, actualización y paginación, y el CRUD completo: crear, listar, buscar, actualizar (con transacción) y eliminar.
+- **`student`**: entidades `Student` y `Grades` (relacionadas 1:N), DTOs de creación, actualización y paginación, y el CRUD completo: crear, listar, buscar, actualizar (con transacción) y eliminar. Crear exige el rol `teacher` y eliminar el rol `admin`.
 - **`user`**: registro e inicio de sesión de usuarios con contraseñas encriptadas (`bcrypt`) y autenticación con **JWT** (`passport-jwt`), más un *guard* de roles y decoradores propios (`@Auth()`, `@GetUser()`, `@RoleProtected()`) para proteger rutas.
 - **`seed`**: un endpoint que borra los estudiantes y vuelve a cargar datos de prueba.
 
@@ -29,7 +29,8 @@ Este repositorio sirve como punto de partida: trae la configuración inicial (co
 | `@types/bcrypt`, `@types/passport-jwt` | ^6.0.0 / ^4.0.1 | Tipos de TypeScript para `bcrypt` y `passport-jwt` (están en `dependencies`, aunque bien podrían ir en `devDependencies`) |
 | `class-validator` | ^0.15.1 | Valida los DTOs (`@IsString()`, `@IsInt()`, etc.) |
 | `class-transformer` | ^0.5.1 | Transforma objetos planos (JSON de las peticiones) en instancias de clases (DTOs) |
-| `@nestjs/mapped-types` | * | Utilidades para derivar DTOs (`PartialType`, `PickType`) sin repetir código, típico en `update-*.dto.ts` |
+| `@nestjs/swagger` | ^11.0.1 | Genera la documentación OpenAPI a partir de decoradores (`@ApiTags`, `@ApiProperty`, `@ApiOperation`...) y sirve Swagger UI en `/api` |
+| `@nestjs/mapped-types` | * | Utilidades para derivar DTOs (`PartialType`, `PickType`) sin repetir código. En este proyecto se usan las versiones de `@nestjs/swagger`, que además copian la documentación (ver [Documentación con Swagger](#documentación-con-swagger)) |
 | `reflect-metadata` | ^0.2.2 | Requerido por los decoradores de TypeScript (metadata en tiempo de ejecución) |
 | `rxjs` | ^7.8.1 | Programación reactiva; Nest la usa internamente (interceptores, streams) |
 
@@ -53,15 +54,15 @@ Este repositorio sirve como punto de partida: trae la configuración inicial (co
 
 ```
 src/
-├── main.ts                     # Punto de entrada: arranca la app, prefijo global, validaciones
+├── main.ts                     # Punto de entrada: arranca la app, prefijo global, validaciones, CORS y Swagger
 ├── app.module.ts                # Módulo raíz: config, conexión a la BD, módulos de features
 ├── student/
-│   ├── student.module.ts        # Módulo de la feature "student" (registra Student y Grades con TypeOrmModule.forFeature)
+│   ├── student.module.ts        # Registra Student y Grades con TypeOrmModule.forFeature e importa UserModule (para usar @Auth)
 │   ├── student.controller.ts    # Rutas HTTP de "student": crear, listar, buscar, actualizar, eliminar
 │   ├── student.service.ts       # Lógica de negocio de "student"
 │   ├── dto/
 │   │   ├── create-student.dto.ts  # Reglas de validación para crear un student (incluye sus grades)
-│   │   ├── update-student.dto.ts  # DTO de actualización: PartialType(CreateStudent), todos los campos opcionales
+│   │   ├── update-student.dto.ts  # DTO de actualización: PartialType(CreateStudent) de @nestjs/swagger, todos los campos opcionales
 │   │   └── pagination.dto.ts      # Query params `limit`/`skip` para paginar el listado
 │   └── entities/
 │       ├── student.entity.ts      # Entidad TypeORM: tabla "student"
@@ -72,7 +73,8 @@ src/
 │   ├── user.service.ts          # Registro (hash con bcrypt), login y generación del JWT
 │   ├── dto/
 │   │   ├── register.dto.ts        # email, password (8–16 caracteres) y fullName
-│   │   └── login.dto.ts           # email y password
+│   │   ├── login.dto.ts           # email y password
+│   │   └── auth-response.dto.ts   # Solo para Swagger: forma de la respuesta de login (AuthResponse) y signup (SignupResponse)
 │   ├── entities/
 │   │   └── user.entity.ts         # Entidad TypeORM: tabla "user" (email único, isActive, roles)
 │   ├── enums/
@@ -85,7 +87,7 @@ src/
 │   │   └── user-role/
 │   │       └── user-role.guard.ts # Guard que verifica que el usuario tenga alguno de los roles requeridos
 │   └── decorators/
-│       ├── auth.decorator.ts      # @Auth(...roles): agrupa RoleProtected + los guards de autenticación y roles
+│       ├── auth.decorator.ts      # @Auth(...roles): agrupa RoleProtected, los guards y la documentación Swagger del token (401/403)
 │       ├── get-user.decorator.ts  # @GetUser(): extrae el usuario autenticado de la request
 │       ├── test.decorator.ts      # @Test(): decorador de parámetro de ejemplo (solo imprime la request)
 │       └── role-protected/
@@ -141,6 +143,8 @@ Cada nueva funcionalidad del curso debería seguir este mismo patrón: una carpe
 
 5. La API queda disponible en `http://localhost:9000/api` (ver [Puntos clave](#puntos-clave) sobre el prefijo global y [Endpoints disponibles](#endpoints-disponibles)).
 
+6. La documentación interactiva (Swagger UI) queda en [`http://localhost:9000/api`](http://localhost:9000/api), y el documento OpenAPI en JSON en `http://localhost:9000/api-json` (ver [Documentación con Swagger](#documentación-con-swagger)).
+
 ## Scripts disponibles
 
 | Comando | Qué hace |
@@ -187,19 +191,26 @@ Todas las rutas quedan bajo el prefijo global `/api` (definido en `main.ts`), m�
 
 ### Student
 
-| Método | Ruta | Descripción | Body / Query params |
-|---|---|---|---|
-| `POST` | `/api/student` | Crea un estudiante (opcionalmente con sus notas) | `{ name, age, email, isActive, gender, favoriteSubjects?, grades? }` |
-| `GET` | `/api/student` | Lista estudiantes, paginado | Query: `limit?` (cantidad), `skip?` (offset) |
-| `GET` | `/api/student/:term` | Busca un estudiante por `id` (UUID), por `name` o por `nickname` | — |
-| `PATCH` | `/api/student/:id` | Actualiza un estudiante por `id`. Si se envía `grades`, **reemplaza** todas sus notas | Cualquier subconjunto de los campos de creación |
-| `DELETE` | `/api/student/:id` | Elimina un estudiante (y sus notas, por el `onDelete: "CASCADE"`) | — |
+| Método | Ruta | Acceso | Descripción | Body / Query params |
+|---|---|---|---|---|
+| `POST` | `/api/student` | Token con rol `teacher` | Crea un estudiante (opcionalmente con sus notas) | `{ name, age, email, isActive, gender, favoriteSubjects?, grades? }` |
+| `GET` | `/api/student` | Público | Lista estudiantes, paginado | Query: `limit?` (cantidad), `skip?` (offset) |
+| `GET` | `/api/student/:term` | Público | Busca un estudiante por `id` (UUID), por `name` o por `nickname` | — |
+| `PATCH` | `/api/student/:id` | Público | Actualiza un estudiante por `id`. Si se envía `grades`, **reemplaza** todas sus notas | Cualquier subconjunto de los campos de creación |
+| `DELETE` | `/api/student/:id` | Token con rol `admin` | Elimina un estudiante (y sus notas, por el `onDelete: "CASCADE"`) | — |
 
-Ejemplos de request:
+Sin token, las rutas protegidas responden `401 Unauthorized`; con un token válido pero sin el rol requerido, `403 Forbidden`. Los usuarios nuevos se registran con el rol `teacher`, así que pueden crear estudiantes pero no eliminarlos. Para probar el `DELETE` hay que darle el rol `admin` a un usuario directamente en la base de datos, por ejemplo:
+
+```sql
+UPDATE "user" SET roles = '{admin,teacher}' WHERE email = 'profe@example.com';
+```
+
+Ejemplos de request (`<token>` es el que devuelve el login, ver [User](#user-autenticación)):
 
 ```bash
-# Crear un estudiante con sus notas
+# Crear un estudiante con sus notas (requiere rol teacher)
 curl -X POST http://localhost:9000/api/student \
+  -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Ana Pérez",
@@ -233,8 +244,9 @@ curl -X PATCH http://localhost:9000/api/student/<uuid> \
     ]
   }'
 
-# Eliminar
-curl -X DELETE http://localhost:9000/api/student/<uuid>
+# Eliminar (requiere rol admin)
+curl -X DELETE http://localhost:9000/api/student/<uuid> \
+  -H "Authorization: Bearer <token>"
 ```
 
 ### User (autenticación)
@@ -263,6 +275,8 @@ curl -X POST http://localhost:9000/api/user/private \
 
 Sin token (o con uno vencido o inválido) la ruta privada responde `401 Unauthorized`. El token dura **1 hora**.
 
+> Signup y login responden `201 Created` (no `200`), porque Nest usa ese código por defecto en los `@Post()`.
+
 ### Seed
 
 | Método | Ruta | Descripción |
@@ -271,20 +285,78 @@ Sin token (o con uno vencido o inválido) la ruta privada responde `401 Unauthor
 
 > Ojo: el seed no está protegido y deja la tabla `student` solo con los datos de prueba. Úsenlo únicamente en su base de datos local.
 
-También hay una **colección de Postman lista para importar** en [`postman/compunet3-nestjs-postgres.postman_collection.json`](postman/compunet3-nestjs-postgres.postman_collection.json) con las peticiones de crear, listar y buscar (ver [Colección de Postman](#colección-de-postman)).
+También hay una **colección de Postman lista para importar** en [`postman/compunet3-nestjs-postgres.postman_collection.json`](postman/compunet3-nestjs-postgres.postman_collection.json) con todos los endpoints (ver [Colección de Postman](#colección-de-postman)).
 
 ## Colección de Postman
 
-En [`postman/compunet3-nestjs-postgres.postman_collection.json`](postman/compunet3-nestjs-postgres.postman_collection.json) está la colección con las peticiones de "Crear estudiante", "Listar estudiantes (paginado)" y "Buscar estudiante (id, name o nickname)".
+En [`postman/compunet3-nestjs-postgres.postman_collection.json`](postman/compunet3-nestjs-postgres.postman_collection.json) está la colección con todos los endpoints, en tres carpetas:
 
-Para usarla:
+| Carpeta | Requests |
+|---|---|
+| **User** | Registrarse (signup), Iniciar sesión (auth), Ruta privada de prueba |
+| **Student** | Crear, Listar (paginado), Buscar (id, name o nickname), Actualizar, Eliminar |
+| **Seed** | Ejecutar seed |
+
+### Variables de colección
+
+| Variable | Valor inicial | Para qué |
+|---|---|---|
+| `baseUrl` | `http://localhost:9000/api` | URL base de la API (ajustarla si cambian el puerto en `main.ts`) |
+| `userEmail` / `userPassword` | `profe@example.com` / `Secreta123` | Credenciales que usan signup y login |
+| `token` | (vacío) | JWT. Lo llenan solos "Registrarse" e "Iniciar sesión" |
+| `studentId` | (vacío) | UUID del último estudiante creado. Lo llena solo "Crear estudiante" |
+
+### Cómo usarla
 
 1. Abrir Postman → **File → Import** → seleccionar el archivo.
-2. La colección trae la variable `baseUrl` ya configurada en `http://localhost:9000/api` (ajustarla si cambian el puerto en `main.ts`).
-3. Para "Buscar estudiante", completar la variable de colección `studentTerm` (o editar el valor directamente en la pestaña **Params** del request) con el `id`, `name` o `nickname` de un estudiante que ya hayan creado.
-4. Con la app corriendo (`npm run start:dev`) y la base de datos disponible, ejecutar las peticiones en orden: primero crear, después listar/buscar.
+2. Con la app corriendo (`npm run start:dev`) y la base de datos disponible, ejecutar **Registrarse** (solo la primera vez) o **Iniciar sesión**. El script de la pestaña **Tests** guarda el token en `{{token}}`.
+3. Ejecutar **Crear estudiante**. Su script guarda el `id` en `{{studentId}}`, y Buscar, Actualizar y Eliminar lo usan por defecto. Para buscar por nombre o nickname, cambien el valor de `term` en la pestaña **Params**.
+4. **Eliminar** requiere el rol `admin`. Los usuarios nuevos son `teacher`, así que primero hay que cambiar el rol en la base de datos (ver [Student](#student)). No hace falta pedir un token nuevo: `JwtStrategy` lee los roles de la base de datos en cada petición.
 
-La colección todavía no incluye los requests de actualizar (`PATCH`) y eliminar (`DELETE`) de estudiantes, ni los de `user` y `seed`: agréguenlos para mantenerla al día. Para las rutas protegidas, en la pestaña **Authorization** del request elijan **Bearer Token** y peguen el token del login.
+La autenticación está configurada a nivel de colección (**Bearer Token** con `{{token}}`), así que las rutas protegidas envían el token solas. Las rutas públicas tienen **No Auth** en su pestaña **Authorization**. Si agregan un endpoint nuevo protegido con `@Auth(...)`, basta con dejar su autorización en **Inherit auth from parent**.
+
+> En "Listar estudiantes" el parámetro `skip` viene desactivado, porque hoy `skip=0` responde `400` (ver [Cosas a revisar](#️-cosas-a-revisar-para-practicar-debugging)).
+
+## Documentación con Swagger
+
+La API se documenta con [OpenAPI](https://swagger.io/specification/) usando `@nestjs/swagger`. Nest arma el documento leyendo los decoradores de controladores, DTOs y entidades, y lo muestra en **Swagger UI**, una página donde se puede ver y probar cada endpoint desde el navegador.
+
+| URL | Qué hay |
+|---|---|
+| `http://localhost:9000/api` | Swagger UI |
+| `http://localhost:9000/api-json` | El documento OpenAPI en JSON (sirve para importarlo en Postman u otras herramientas) |
+
+### Configuración (`src/main.ts`)
+
+`DocumentBuilder` define el título, la descripción, la versión y el esquema de seguridad `JWT-auth` (token Bearer). `SwaggerModule.createDocument()` genera el documento y `SwaggerModule.setup("api", ...)` lo publica. `setup` no usa el prefijo global, por eso Swagger UI queda en `/api` y no en `/api/api`.
+
+En el mismo archivo, `app.enableCors()` permite que un frontend servido desde otro origen (por ejemplo `http://localhost:4200`) llame a la API.
+
+### Probar rutas protegidas desde Swagger UI
+
+1. Ejecutar `POST /api/user/auth` (o `signup`) con **Try it out** y copiar el `token` de la respuesta.
+2. Hacer clic en **Authorize** (arriba a la derecha), pegar el token **sin** la palabra `Bearer` y confirmar.
+3. Las rutas con candado ahora envían `Authorization: Bearer <token>` automáticamente.
+
+### Decoradores que se usan
+
+| Decorador | Dónde | Para qué |
+|---|---|---|
+| `@ApiTags("Students")` | Controlador | Agrupa los endpoints del controlador bajo una sección (Students, Users, Seed) |
+| `@ApiOperation({ summary, description })` | Método | Título y explicación del endpoint |
+| `@ApiParam({ name, description })` | Método | Documenta un parámetro de ruta (`:id`, `:term`) |
+| `@ApiOkResponse`, `@ApiCreatedResponse`, `@ApiBadRequestResponse`, `@ApiNotFoundResponse`... | Método | Códigos de respuesta posibles; con `type: Student` (o `[Student]` para listas) muestran la forma del JSON |
+| `@ApiProperty({ example, description })` | Propiedad de DTO o entidad | Documenta un campo: tipo, ejemplo, si es obligatorio, `enum`, `format`, etc. |
+| `@ApiPropertyOptional()` | Propiedad de DTO | Igual que `@ApiProperty`, pero marca el campo como opcional (se usa en `PaginationDto`) |
+| `@ApiHideProperty()` | Propiedad de entidad | Oculta un campo del esquema. Se usa en `Grades.student` para que el esquema no sea circular (`Student → grades → student → ...`) |
+| `@ApiBearerAuth("JWT-auth")` | Método | Pone el candado al endpoint. Ya viene incluido en `@Auth()` |
+
+Puntos a tener en cuenta:
+
+- **`@Auth()` también documenta**: además de los guards, agrega `@ApiBearerAuth("JWT-auth")` y las respuestas `401` y `403` (esta última dice qué roles se necesitan). Una ruta nueva protegida con `@Auth(...)` queda documentada sola.
+- **`PartialType` se importa de `@nestjs/swagger`**, no de `@nestjs/mapped-types`. Las dos versiones copian las validaciones de `class-validator`, pero solo la de Swagger copia también los `@ApiProperty`. Con la de `mapped-types`, el body del `PATCH` aparece vacío en Swagger UI. Lo mismo aplica a `PickType`, `OmitType` e `IntersectionType`.
+- **Swagger no lee los tipos de TypeScript por sí solo**: sin `@ApiProperty`, un campo no aparece en el esquema. Para arreglos hay que indicar el tipo de los elementos (`type: [String]`, `type: () => [Grades]`).
+- **Los DTOs de respuesta** (`src/user/dto/auth-response.dto.ts`) existen solo para documentar: el servicio devuelve un objeto plano, pero Swagger necesita una clase para mostrar su forma.
 
 ## Guards y decoradores
 
@@ -298,7 +370,7 @@ Un **decorador** es una función que se escribe con `@` encima de una clase, un 
 
 - **De parámetro** (`createParamDecorator`): `@GetUser()` saca el usuario autenticado de `request.user` y lo entrega directamente como argumento del método. Con `@GetUser('email')` devuelve solo ese campo.
 - **De metadata** (`SetMetadata`): `@RoleProtected('admin')` no ejecuta nada en la petición; solo "pega" la lista de roles al método para que un guard la lea después.
-- **Compuestos** (`applyDecorators`): `@Auth(...roles)` junta varios decoradores en uno solo. Escribir `@Auth(ValidRoles.admin)` equivale a escribir `@RoleProtected(ValidRoles.admin)` y `@UseGuards(AuthGuard(), UserRoleGuard)`.
+- **Compuestos** (`applyDecorators`): `@Auth(...roles)` junta varios decoradores en uno solo. Escribir `@Auth(ValidRoles.admin)` equivale a escribir `@RoleProtected(ValidRoles.admin)`, `@UseGuards(AuthGuard(), UserRoleGuard)` y los decoradores de Swagger del token (`@ApiBearerAuth`, `@ApiUnauthorizedResponse`, `@ApiForbiddenResponse`).
 
 ### ¿Qué es un guard?
 
@@ -329,7 +401,9 @@ verReportes(@GetUser() user: User) {        // user llega listo, ya validado
 }
 ```
 
-`@Auth()` sin argumentos (como en `POST /api/user/private`) solo exige estar autenticado, sin importar el rol.
+`@Auth()` sin argumentos (como en `POST /api/user/private`) solo exige estar autenticado, sin importar el rol. En `student` se usa `@Auth(ValidRoles.teacher)` para crear y `@Auth(ValidRoles.admin)` para eliminar.
+
+Para usar `@Auth()` en un módulo distinto de `user` (como `StudentModule`), ese módulo tiene que importar `UserModule`. `UserModule` exporta `PassportModule` y `JwtStrategy`, que son los que necesita `AuthGuard()`.
 
 ## Puntos clave
 
@@ -349,7 +423,7 @@ Estos son los conceptos importantes que se están usando en este proyecto y que 
 
 - **Prefijo global de rutas** (`app.setGlobalPrefix('api')` en `main.ts`): todas las rutas de la aplicación quedan bajo `/api`. Cada controlador agrega su propio prefijo encima (`@Controller('student')`), por eso la ruta final es `/api/student`. Al agregar nuevos módulos (por ejemplo `course`, `enrollment`) solo hace falta definir el `@Controller('course')` correspondiente; el `/api` ya queda cubierto por el prefijo global.
 
-- **DTOs + `class-validator`/`class-transformer`**: los DTOs (`create-*.dto.ts`, `update-*.dto.ts`) son las clases que definen la forma y las reglas de validación de los datos que entran por la API. `CreateStudent` (`src/student/dto/create-student.dto.ts`) valida `name`, `age`, `email`, `isActive`, `gender` (`@IsIn(['Male', 'Female', 'Other'])`) y, de forma opcional, `favoriteSubjects` y `grades`. `@nestjs/mapped-types` (`PartialType`) permite crear el DTO de actualización reutilizando el de creación, sin duplicar campos: `UpdateStudentDto` (`src/student/dto/update-student.dto.ts`) es `PartialType(CreateStudent)`, así que tiene las mismas reglas de validación pero todos los campos son opcionales.
+- **DTOs + `class-validator`/`class-transformer`**: los DTOs (`create-*.dto.ts`, `update-*.dto.ts`) son las clases que definen la forma y las reglas de validación de los datos que entran por la API. `CreateStudent` (`src/student/dto/create-student.dto.ts`) valida `name`, `age`, `email`, `isActive`, `gender` (`@IsIn(['Male', 'Female', 'Other'])`) y, de forma opcional, `favoriteSubjects` y `grades`. `PartialType` permite crear el DTO de actualización reutilizando el de creación, sin duplicar campos: `UpdateStudentDto` (`src/student/dto/update-student.dto.ts`) es `PartialType(CreateStudent)`, así que tiene las mismas reglas de validación (y la misma documentación Swagger) pero todos los campos son opcionales.
 
 - **Entidades TypeORM** (`src/student/entities/student.entity.ts`): la clase `Student`, decorada con `@Entity()`, define la tabla `student` en la base de datos. Cada `@Column()` es una columna (`name`, `age`, `email` con `unique: true`, `isActive`, `gender`, `favoriteSubjects` como `text` con `array: true`, `nickname`). `@PrimaryGeneratedColumn("uuid")` hace que el `id` se genere automáticamente como UUID.
 
@@ -401,6 +475,12 @@ Estos son los conceptos importantes que se están usando en este proyecto y que 
 
 - `GET /api/seed` borra datos y cualquiera puede llamarlo. ¿Cómo lo protegerían usando `@Auth(...)` para que solo un `admin` pueda ejecutarlo?
 
+- Crear y eliminar estudiantes exige token, pero `PATCH /api/student/:id` no tiene `@Auth`: cualquiera puede modificar un estudiante. ¿Qué rol debería exigir?
+
+- En `PaginationDto`, `skip` tiene `@IsPositive()` y `@Min(0)` a la vez. `@IsPositive()` rechaza el `0`, así que `?skip=0` (la primera página) responde `400`. ¿Cuál de los dos validadores sobra?
+
+- `DELETE /api/student/:id` responde `200` sin body. ¿Qué código HTTP describe mejor una eliminación sin contenido? (Pista: `@HttpCode()`.) Si lo cambian, actualicen también la respuesta documentada en Swagger.
+
 ## Pruebas
 
 ```bash
@@ -422,3 +502,4 @@ npm run test:cov
 - [Guards en NestJS](https://docs.nestjs.com/guards)
 - [Decoradores personalizados en NestJS](https://docs.nestjs.com/custom-decorators)
 - [Autenticación con Passport en NestJS](https://docs.nestjs.com/recipes/passport)
+- [OpenAPI (Swagger) en NestJS](https://docs.nestjs.com/openapi/introduction)

@@ -2,8 +2,18 @@
   "info": {
     "_postman_id": "ded166a3-02bc-455c-b60f-054b8aecba71",
     "name": "CompuNet3 - NestJS + PostgreSQL",
-    "description": "Colección para probar la API del curso Computación en Internet 3 (NestJS + TypeORM + PostgreSQL). Usa la variable de colección {{baseUrl}} (por defecto http://localhost:9000/api) para no repetir la URL en cada request.\n\nAntes de usarla: levantar la app con `npm run start:dev` y tener PostgreSQL corriendo con las credenciales definidas en el `.env` del proyecto.",
+    "description": "Colección para probar la API del curso Computación en Internet 3 (NestJS + TypeORM + PostgreSQL). Usa la variable de colección {{baseUrl}} (por defecto http://localhost:9000/api) para no repetir la URL en cada request.\n\nAntes de usarla: levantar la app con `npm run start:dev` y tener PostgreSQL corriendo con las credenciales definidas en el `.env` del proyecto.\n\n**Autenticación:** la colección usa Bearer Token con la variable `{{token}}`. Ejecuten primero \"Registrarse\" (la primera vez) o \"Iniciar sesión\": el script de Tests guarda el token automáticamente y las rutas protegidas lo envían solas. Las rutas públicas tienen la autenticación desactivada (`No Auth`).\n\nOrden sugerido: Registrarse → Iniciar sesión → Crear estudiante → Listar / Buscar / Actualizar → Eliminar.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
   },
   "variable": [
     {
@@ -12,21 +22,54 @@
       "type": "string"
     },
     {
-      "key": "studentTerm",
+      "key": "userEmail",
+      "value": "profe@example.com",
+      "type": "string",
+      "description": "Email para registrarse e iniciar sesión"
+    },
+    {
+      "key": "userPassword",
+      "value": "Secreta123",
+      "type": "string",
+      "description": "Contraseña (8 a 16 caracteres)"
+    },
+    {
+      "key": "token",
       "value": "",
       "type": "string",
-      "description": "id (UUID), name o nickname de un estudiante existente, para usar en 'Buscar estudiante'"
+      "description": "JWT. Lo llenan automáticamente 'Registrarse' e 'Iniciar sesión'"
+    },
+    {
+      "key": "studentId",
+      "value": "",
+      "type": "string",
+      "description": "UUID del último estudiante creado. Lo llena 'Crear estudiante'"
     }
   ],
   "item": [
     {
-      "id": "ee450cfd-1373-432c-909a-094b8c048b25",
-      "name": "Student",
-      "description": "Endpoints del módulo student",
+      "id": "1cd3649a-8220-4ca2-a9d1-0415f9b1fdce",
+      "name": "User",
+      "description": "Registro, login y una ruta protegida de prueba",
       "item": [
         {
-          "id": "b218fbf2-5da4-4609-ab89-25b117ede08c",
-          "name": "Crear estudiante",
+          "id": "830b9889-beda-47f2-bece-daf80ddc9e21",
+          "name": "Registrarse (signup)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.token) {",
+                  "  pm.collectionVariables.set('token', res.token);",
+                  "  console.log('Token guardado en la variable {{token}}');",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -35,21 +78,156 @@
                 "value": "application/json"
               }
             ],
+            "url": {
+              "raw": "{{baseUrl}}/user/signup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "signup"
+              ]
+            },
+            "description": "Registra un usuario nuevo con el rol `teacher` por defecto. Devuelve el usuario (sin la contraseña) y un `token`, que el script de Tests guarda en `{{token}}`.\n\n`password` debe tener entre 8 y 16 caracteres. Si el email ya existe, la API responde `500`.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Ana Pérez\",\n  \"age\": 21,\n  \"email\": \"ana@example.com\",\n  \"isActive\": true,\n  \"gender\": \"Female\",\n  \"favoriteSubjects\": [\"Math\", \"History\"],\n  \"grades\": [\n    { \"subject\": \"Math\", \"grade\": 90 },\n    { \"subject\": \"History\", \"grade\": 85 }\n  ]\n}",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\",\n  \"fullName\": \"Profe Ejemplo\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "c1ade663-fb5e-4f66-84a8-2af35003d39b",
+          "name": "Iniciar sesión (auth)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.token) {",
+                  "  pm.collectionVariables.set('token', res.token);",
+                  "  console.log('Token guardado en la variable {{token}}');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/auth",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "auth"
+              ]
+            },
+            "description": "Inicia sesión con `{{userEmail}}` y `{{userPassword}}`. Devuelve `id`, `email` y un `token` (dura 1 hora), que el script de Tests guarda en `{{token}}`. Con credenciales incorrectas responde `401`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "59f55760-5dea-4db8-96e7-fec61db3d6ee",
+          "name": "Ruta privada de prueba",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/user/private",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "private"
+              ]
+            },
+            "description": "Solo responde `{ \"message\": \"Done\" }` si llega un token válido (`@Auth()` sin roles). Sin token o con uno vencido responde `401`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "ee450cfd-1373-432c-909a-094b8c048b25",
+      "name": "Student",
+      "description": "Endpoints del módulo student",
+      "item": [
+        {
+          "id": "b218fbf2-5da4-4609-ab89-25b117ede08c",
+          "name": "Crear estudiante",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.id) {",
+                  "  pm.collectionVariables.set('studentId', res.id);",
+                  "  console.log('Estudiante guardado en la variable {{studentId}}: ' + res.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/student",
-              "host": ["{{baseUrl}}"],
-              "path": ["student"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "student"
+              ]
             },
-            "description": "Crea un estudiante. `gender` debe ser 'Male', 'Female' u 'Other' (@IsIn en CreateStudent). `favoriteSubjects` y `grades` son opcionales; si se envían `grades`, se guardan junto con el estudiante gracias al `cascade: true` de la relación Student -> Grades."
+            "description": "Crea un estudiante. **Requiere token con rol `teacher`** (`@Auth(ValidRoles.teacher)`): sin token responde `401` y sin el rol `403`.\n\n`gender` debe ser 'Male', 'Female' u 'Other' (@IsIn en CreateStudent). `favoriteSubjects` y `grades` son opcionales; si se envían `grades`, se guardan junto con el estudiante gracias al `cascade: true` de la relación Student -> Grades.\n\nEl script de Tests guarda el `id` del estudiante creado en `{{studentId}}`, para usarlo en buscar, actualizar y eliminar.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ana Pérez\",\n  \"age\": 21,\n  \"email\": \"ana@example.com\",\n  \"isActive\": true,\n  \"gender\": \"Female\",\n  \"favoriteSubjects\": [\n    \"Math\",\n    \"History\"\n  ],\n  \"grades\": [\n    {\n      \"subject\": \"Math\",\n      \"grade\": 90\n    },\n    {\n      \"subject\": \"History\",\n      \"grade\": 85\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           },
           "response": []
         },
@@ -60,9 +238,13 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/student?limit=10&skip=0",
-              "host": ["{{baseUrl}}"],
-              "path": ["student"],
+              "raw": "{{baseUrl}}/student?limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "student"
+              ],
               "query": [
                 {
                   "key": "limit",
@@ -72,11 +254,15 @@
                 {
                   "key": "skip",
                   "value": "0",
-                  "description": "Cantidad de estudiantes a saltar, para paginar (opcional)"
+                  "description": "Cantidad de estudiantes a saltar, para paginar (opcional). Ojo: hoy `skip=0` responde 400 por el @IsPositive() de PaginationDto (ver 'Cosas a revisar' en el README); por eso está desactivado.",
+                  "disabled": true
                 }
               ]
             },
-            "description": "Lista estudiantes con paginación. `limit` y `skip` son opcionales (PaginationDto)."
+            "description": "Lista estudiantes con paginación. `limit` y `skip` son opcionales (PaginationDto). Ruta pública.",
+            "auth": {
+              "type": "noauth"
+            }
           },
           "response": []
         },
@@ -88,17 +274,125 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/student/:term",
-              "host": ["{{baseUrl}}"],
-              "path": ["student", ":term"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "student",
+                ":term"
+              ],
               "variable": [
                 {
                   "key": "term",
-                  "value": "{{studentTerm}}",
-                  "description": "UUID del estudiante, o su name/nickname (ver findOne en student.service.ts)"
+                  "value": "{{studentId}}",
+                  "description": "UUID del estudiante, o su name/nickname (ver findOne en student.service.ts). Por defecto, el último estudiante creado."
                 }
               ]
             },
-            "description": "Busca un estudiante por id (si `term` es un UUID válido) o por name/nickname (comparación case-insensitive). Incluye sus grades en la respuesta."
+            "description": "Busca un estudiante por id (si `term` es un UUID válido) o por name/nickname (comparación case-insensitive). Incluye sus grades en la respuesta. Ruta pública.\n\nPor defecto usa `{{studentId}}`; para buscar por nombre o nickname, cambien el valor en la pestaña **Params** (por ejemplo `ana_pérez21`).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "347eb4f8-8e5a-4113-934b-7ba993624b5a",
+          "name": "Actualizar estudiante",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/student/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "student",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{studentId}}",
+                  "description": "UUID del estudiante (por defecto, el último creado)"
+                }
+              ]
+            },
+            "description": "Actualiza solo los campos enviados (UpdateStudentDto = PartialType(CreateStudent)). Si el body trae `grades`, **reemplaza** todas las notas del estudiante; para agregar una materia hay que enviar la lista completa. Hoy esta ruta es pública (no tiene `@Auth`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"age\": 22,\n  \"grades\": [\n    {\n      \"subject\": \"Math\",\n      \"grade\": 95\n    },\n    {\n      \"subject\": \"History\",\n      \"grade\": 85\n    },\n    {\n      \"subject\": \"Physics\",\n      \"grade\": 80\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "c53fb11d-b098-4f14-a9bb-2f8e9987a665",
+          "name": "Eliminar estudiante",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/student/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "student",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{studentId}}",
+                  "description": "UUID del estudiante (por defecto, el último creado)"
+                }
+              ]
+            },
+            "description": "Elimina el estudiante y sus notas (`onDelete: \"CASCADE\"`). **Requiere token con rol `admin`** (`@Auth(ValidRoles.admin)`). Los usuarios nuevos son `teacher`, así que sin cambiar el rol en la base de datos esta petición responde `403`:\n\n```sql\nUPDATE \"user\" SET roles = '{admin,teacher}' WHERE email = 'profe@example.com';\n```\n\nNo hace falta pedir un token nuevo: `JwtStrategy` lee el usuario (con sus roles) de la base de datos en cada petición."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "id": "db59badc-652c-4ab3-8125-d927b97c8e98",
+      "name": "Seed",
+      "description": "Carga de datos de prueba",
+      "item": [
+        {
+          "id": "13b4e568-4432-4bde-9887-5d4d87c8e353",
+          "name": "Ejecutar seed",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/seed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "seed"
+              ]
+            },
+            "description": "**Borra todos los estudiantes** y vuelve a insertar los 40 de `src/seed/data/seed-student.data.ts`. Responde `SEED EXECUTED`. Úsenlo solo en su base de datos local.",
+            "auth": {
+              "type": "noauth"
+            }
           },
           "response": []
         }
