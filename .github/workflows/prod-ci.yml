@@ -1,0 +1,29 @@
+name: PROD-CI
+
+on:
+    push:
+      branches: [main]
+    pull_request:
+      branches: [main]
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Descargar el codoigo
+              uses: actions/checkout@v4
+            
+            - name: Instalar nodejs
+              uses: actions/setup-node@v4
+              with: 
+                node-version: 24
+                cache: npm
+
+            - name: Instalar dependencias
+              run: npm i
+            
+            - name: Ejecutar pruebas unitarias
+              run: npm run test
+            
+            - name: Compilar el proyecto
+              run : npm run build
