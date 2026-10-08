@@ -37,7 +37,7 @@ describe("Student entity - nickname", () => {
         student.checkNicknameInsert();
 
         //Assert
-        expect(student.nickname).toBe("juan_carlos perez23");
+        expect(student.nickname).toBe("juan_carlos_perez23");
     })
 
 })
