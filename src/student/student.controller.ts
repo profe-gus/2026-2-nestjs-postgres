@@ -47,7 +47,7 @@ export class StudentController {
   @ApiBadRequestResponse({ description: "Invalid request body" })
   @ApiNotFoundResponse({ description: "Student not found" })
   update(@Param("id") id: string, @Body() updateStudentDto: UpdateStudentDto){
-    return this.studentService.update(id, updateStudentDto);
+    return this.studentService.updateV2(id, updateStudentDto);
   }
 
   @Delete(":id")

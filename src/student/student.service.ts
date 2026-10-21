@@ -72,6 +72,59 @@ export class StudentService {
         }
     }
 
+    async updateV2(id: string, updateStudentDto : UpdateStudentDto){
+        const {grades, ...studentDetails} = updateStudentDto;
+        const student = await this.studentRepository.preload({
+            id: id,
+            ...studentDetails
+        })
+
+        if(!student) throw new NotFoundException(`Student with id ${id} not found`);
+
+        const queryRunner = this.datasource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try{
+            if(grades){
+                // 1. Traer las notas que el estudiante tiene hoy
+                const currentGrades = await queryRunner.manager.find(Grades, {
+                    where : { student: {id} 
+                }
+                })
+
+                // 2. Combinar: actualizar las notas que existen, agregar las nuevas si llegan nuevas
+                for ( const newGrade of grades){
+                    const existing = currentGrades.find(
+                        grade => grade.subject.toLowerCase() === newGrade.subject.toLowerCase());
+
+                        if(existing) {
+                            existing.grade = newGrade.grade;
+                        }else{
+                            currentGrades.push(this.gradesRepository.create({
+                                subject: newGrade.subject,
+                                grade: newGrade.grade
+                            }))
+                        }
+    
+                    }
+                    // 3. Guardar la lista de notas compelta : no queda ninguna nota huerfana
+                    student.grades = currentGrades;
+            }
+
+            await queryRunner.manager.save(student);
+            await queryRunner.commitTransaction();
+            await queryRunner.release();
+
+            return await this.findOne(student.id);
+
+        }catch(error){
+            await queryRunner.rollbackTransaction();
+            await queryRunner.release();
+            this.handleException(error);
+        }
+    }
+
     async update(id: string, updateStudentDto: UpdateStudentDto){
         const {grades, ...studentDetails} = updateStudentDto;
         const student = await this.studentRepository.preload({
